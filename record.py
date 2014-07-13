@@ -54,7 +54,7 @@ def getdata (raw) :
 
 
 def record () :
-    # labels = range(Classifier.NUM_OF_LABELS-1, -1, -1) * 15
+    #labels = range(Classifier.NUM_OF_LABELS-1, -1, -1) * 15
     labels = [0] * 15 + [1] * 15
     # random.shuffle(labels)
     datas = []
@@ -62,7 +62,7 @@ def record () :
     rawdata2 = []
 
     record_time = len (labels)
-    shcmd = "arecord -c 2 -d %d -t raw -r 2000 -f S16_LE - 2>/dev/null | xxd -p | tr -d '\n' > tmppp" % (record_time + 1)
+    shcmd = "arecord -c 2 -d %d -t raw -r 2000 -f S16_LE - 2>/dev/null > tmppp" % (record_time + 1)
     proc = subprocess.Popen (shcmd , stdout = subprocess.PIPE, shell = True)
     for i in range (-1, record_time) :
         if i > -1 :
@@ -108,18 +108,23 @@ def train(rawdata1, rawdata2, y):
     X1 = rawdata1
     X2 = rawdata2
     y_2 = []
-    for yi, x1, x2 in zip(y, X1[:-1], X2[:-1]):
-        for i in range(700, 1500, Classifier.WINDOW_SHIFT_TRAIN):
+    for yi, x1, x2 in zip(y, X1, X2):
+        for i in range(500, 1500, Classifier.WINDOW_SHIFT_TRAIN):
             X.append( extract_feature(
                         x1[i: i+Classifier.WINDOW_SIZE],
-                        x2[i: i+Classifier.WINDOW_SIZE]) )
+                        x2[i: i+Classifier.WINDOW_SIZE])[:500] )
         #    X.append(x1[i: i+Classifier.WINDOW_SIZE])
             # X.append( np.concatenate(( 
             #         np.absolute(np.fft.fft(x1[i: i+Classifier.WINDOW_SIZE])) , 
             #         np.absolute(np.fft.fft(x2[i: i+Classifier.WINDOW_SIZE])) ) ).tolist())
             y_2.append( yi )
     y = y_2
-    scalers, classifiers, scores = Classifier.gen_model(X, y, verbose=False)
+    scalers, classifiers, scores = Classifier.gen_model(X, y, verbose=True)
+    """
+    scalers = []
+    classifiers = KNeighborsClassifier(n_neighbors=1).fit(X, y)
+    scores = []
+    """
     sys.stderr.write ("finish training\n")
     return scalers, classifiers, scores
 
@@ -132,7 +137,7 @@ def predict (scalers, classifiers, scores) :
 
     sys.stderr.write ("start predict\n")
 
-    shcmd = "arecord -t raw -c 2 -r 2000 -B 25 -f S16_LE - 2>/dev/null"
+    shcmd = "arecord -t raw -c 2 -r 2000 -f S16_LE - 2>/dev/null"
     proc = subprocess.Popen (shcmd, stdout = subprocess.PIPE, shell = True)
     read_thread = readdataThread (proc.stdout)
     read_thread.start ()
@@ -147,16 +152,16 @@ def predict (scalers, classifiers, scores) :
 # TODO
             data2 = data1
 
-            X = extract_feature(data1, data2)
+            X = extract_feature(data1, data2)[:500]
             tmpp.append(X)
-            tp = Classifier.multi_classification(X, scalers, classifiers, scores)[0]
+            #tp = classifiers.predict([X])[0]
+            tp = Classifier.multi_classification([X], scalers, classifiers, scores)[0]
             print tp
 
             p[tp] += 1
             count += 1
 # TODO
             if count >= 10 :
-# TODO
                 maj = p.index (max (p))
                 count = 0
                 p = [0] * Classifier.NUM_OF_LABELS
@@ -189,10 +194,11 @@ def main () :
         sys.stderr.write ("Wrong arguments\n")
         exit (1)
     scalers, classifiers, scores = train (rawx1, rawx2, y)
+    """
     for i, j in zip(rawx1[:-1], rawx2[:-1]):
-        print len(i), len(j)
-         print Classifier.multi_classification(extract_feature(rawx1[500:1000], rawx2[500:1000]), scalers, classifiers, scores)
-    #predict (scalers, classifiers, scores)
+        print Classifier.multi_classification(extract_feature(i[500:1000], j[500:1000])[:500], scalers, classifiers, scores)
+    """
+    predict (scalers, classifiers, scores)
 
 if __name__ == "__main__" :
     main ()
