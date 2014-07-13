@@ -9,10 +9,12 @@ import subprocess
 import sys
 import time
 import threading
+import struct
 
 import Classifier 
 from sklearn.externals import joblib
 from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsClassifier
 
 import code
 
@@ -28,17 +30,20 @@ class readdataThread (threading.Thread) :
         global buf
 
         while True :
-            buf += self.FILE.readline (50).strip ()
+            buf += self.FILE.read (50 * 4)
 
+def extract_feature (data1, data2):
+    return np.concatenate(( 
+            (np.absolute(np.fft.fft(data1))) , 
+            (np.absolute(np.fft.fft(data2))) ) ).tolist()
+    
 
 def getdata (raw) :
     data1 = []
     data2 = []
     m = 1
-    for j in range (0, len (raw), 4) :
-        n = int (raw[j:j+4], 16)
-        if n >= 32768 :
-            n -= 65536
+    for j in range (0, len (raw), 2) :
+        n = struct.unpack ("<h", raw[j:j+2])[0]
         if m == 1 :
             data1.append (float(n))
             m = 2
@@ -49,14 +54,15 @@ def getdata (raw) :
 
 
 def record () :
-    labels = range(Classifier.NUM_OF_LABELS-1, -1, -1) * 15
+    # labels = range(Classifier.NUM_OF_LABELS-1, -1, -1) * 15
+    labels = [0] * 15 + [1] * 15
     # random.shuffle(labels)
     datas = []
     rawdata1 = []
     rawdata2 = []
 
     record_time = len (labels)
-    shcmd = "arecord -c 2 -d %d -t raw -r 2000 -f S16_BE - 2>/dev/null | xxd -p | tr -d '\n' > tmppp" % (record_time + 1)
+    shcmd = "arecord -c 2 -d %d -t raw -r 2000 -f S16_LE - 2>/dev/null | xxd -p | tr -d '\n' > tmppp" % (record_time + 1)
     proc = subprocess.Popen (shcmd , stdout = subprocess.PIPE, shell = True)
     for i in range (-1, record_time) :
         if i > -1 :
@@ -66,14 +72,18 @@ def record () :
     f = open ('tmppp', 'r')
     for i in range (-1, record_time) :
         if i == -1 :
-            f.readline (16000)
+            f.read (2000 * 4)
             continue
-        data1, data2 = getdata (f.readline (16000))
+        data1, data2 = getdata (f.read (2000 * 4))
         # plt.subplot(2,1,1)
         # plt.plot(data1)
         # plt.subplot(2,1,2)
         # plt.plot(data2)
         # plt.show()
+
+        # TODO
+        data2 = data1
+        # TODO
 
         rawdata1.append(data1)
         rawdata2.append(data2)
@@ -98,11 +108,15 @@ def train(rawdata1, rawdata2, y):
     X1 = rawdata1
     X2 = rawdata2
     y_2 = []
-    for yi, x1, x2 in zip(y, X1, X2):
-        for i in range(700, 1300, Classifier.WINDOW_SHIFT_TRAIN):
-            X.append( np.concatenate(( 
-                    np.absolute(np.fft.fft(x1[i: i+Classifier.WINDOW_SIZE])) , 
-                    np.absolute(np.fft.fft(x2[i: i+Classifier.WINDOW_SIZE])) ) ).tolist())
+    for yi, x1, x2 in zip(y, X1[:-1], X2[:-1]):
+        for i in range(700, 1500, Classifier.WINDOW_SHIFT_TRAIN):
+            X.append( extract_feature(
+                        x1[i: i+Classifier.WINDOW_SIZE],
+                        x2[i: i+Classifier.WINDOW_SIZE]) )
+        #    X.append(x1[i: i+Classifier.WINDOW_SIZE])
+            # X.append( np.concatenate(( 
+            #         np.absolute(np.fft.fft(x1[i: i+Classifier.WINDOW_SIZE])) , 
+            #         np.absolute(np.fft.fft(x2[i: i+Classifier.WINDOW_SIZE])) ) ).tolist())
             y_2.append( yi )
     y = y_2
     scalers, classifiers, scores = Classifier.gen_model(X, y, verbose=False)
@@ -113,41 +127,48 @@ def train(rawdata1, rawdata2, y):
 def predict (scalers, classifiers, scores) :
     global buf
 
+    tmpp = []
+    t=0
+
     sys.stderr.write ("start predict\n")
 
-    shcmd = "arecord -t raw -c 2 -r 2000 -f S16_BE - 2>/dev/null | xxd -p"
+    shcmd = "arecord -t raw -c 2 -r 2000 -B 25 -f S16_LE - 2>/dev/null"
     proc = subprocess.Popen (shcmd, stdout = subprocess.PIPE, shell = True)
     read_thread = readdataThread (proc.stdout)
     read_thread.start ()
     
     count = 0
-    p = {}
-    while True :
-        if len (buf) >= Classifier.WINDOW_SIZE * 8 :
-            data1, data2 = getdata (buf[-Classifier.WINDOW_SIZE * 8:])
-            buf = buf[50:]
+    p = [0] * Classifier.NUM_OF_LABELS
+    while t<50000000 :
+        if len (buf) >= Classifier.WINDOW_SIZE * 4 :
+            data1, data2 = getdata (buf[-Classifier.WINDOW_SIZE * 4:])
+            buf = buf[-(Classifier.WINDOW_SIZE - 50) * 4:]
 
-            data1 = np.absolute(np.fft.fft(data1))
-            data2 = np.absolute(np.fft.fft(data2))
-            X = data1.tolist () + data2.tolist ()
+# TODO
+            data2 = data1
+
+            X = extract_feature(data1, data2)
+            tmpp.append(X)
             tp = Classifier.multi_classification(X, scalers, classifiers, scores)[0]
-            #tp = clf.predict(X)[0]
-            if tp in p:
-                p[tp] += 1
-            else :
-                p[tp] = 1
+            print tp
+
+            p[tp] += 1
             count += 1
-            if count >= 20 :
-                maxi = 0
-                maj = -1
-                for m in p :
-                    if p[m] > maxi :
-                        maxi = p[m]
-                        maj = m
+# TODO
+            if count >= 10 :
+# TODO
+                maj = p.index (max (p))
                 count = 0
-                p = {}
+                p = [0] * Classifier.NUM_OF_LABELS
                 print (maj)
                 sys.stdout.flush ()
+        t+=1
+    for i in tmpp:
+        plt.plot(i)
+        plt.show()
+    print tmpp[0]
+
+    
     
     read_thread.join ()
 
@@ -168,9 +189,10 @@ def main () :
         sys.stderr.write ("Wrong arguments\n")
         exit (1)
     scalers, classifiers, scores = train (rawx1, rawx2, y)
-
-    predict (scalers, classifiers, scores)
-
+    for i, j in zip(rawx1[:-1], rawx2[:-1]):
+        print len(i), len(j)
+         print Classifier.multi_classification(extract_feature(rawx1[500:1000], rawx2[500:1000]), scalers, classifiers, scores)
+    #predict (scalers, classifiers, scores)
 
 if __name__ == "__main__" :
     main ()

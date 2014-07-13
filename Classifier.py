@@ -42,8 +42,8 @@ def gen_model(train_data, train_ans, verbose=True):
     tuned_parameters = [
             {'kernel': ['rbf'], 'gamma': [], 'C': []},
         ]
-    now = 4.0
-    while now > 0.00001:
+    now = 1.0
+    while now > 0.001:
         tuned_parameters[0]['gamma'].append(now)
         if now >= 1:
             tuned_parameters[0]['C'].append(now) 
