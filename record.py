@@ -54,8 +54,7 @@ def getdata (raw) :
 
 
 def record () :
-    #labels = range(Classifier.NUM_OF_LABELS-1, -1, -1) * 15
-    labels = [0] * 15 + [1] * 15
+    labels = range(Classifier.NUM_OF_LABELS-1, -1, -1) * 15
     # random.shuffle(labels)
     datas = []
     rawdata1 = []
@@ -80,10 +79,6 @@ def record () :
         # plt.subplot(2,1,2)
         # plt.plot(data2)
         # plt.show()
-
-        # TODO
-        data2 = data1
-        # TODO
 
         rawdata1.append(data1)
         rawdata2.append(data2)
@@ -112,14 +107,14 @@ def train(rawdata1, rawdata2, y):
         for i in range(500, 1500, Classifier.WINDOW_SHIFT_TRAIN):
             X.append( extract_feature(
                         x1[i: i+Classifier.WINDOW_SIZE],
-                        x2[i: i+Classifier.WINDOW_SIZE])[:500] )
+                        x2[i: i+Classifier.WINDOW_SIZE]) )
         #    X.append(x1[i: i+Classifier.WINDOW_SIZE])
             # X.append( np.concatenate(( 
             #         np.absolute(np.fft.fft(x1[i: i+Classifier.WINDOW_SIZE])) , 
             #         np.absolute(np.fft.fft(x2[i: i+Classifier.WINDOW_SIZE])) ) ).tolist())
             y_2.append( yi )
     y = y_2
-    scalers, classifiers, scores = Classifier.gen_model(X, y, verbose=True)
+    scalers, classifiers, scores = Classifier.gen_model(X, y, verbose=False)
     """
     scalers = []
     classifiers = KNeighborsClassifier(n_neighbors=1).fit(X, y)
@@ -132,9 +127,6 @@ def train(rawdata1, rawdata2, y):
 def predict (scalers, classifiers, scores) :
     global buf
 
-    tmpp = []
-    t=0
-
     sys.stderr.write ("start predict\n")
 
     shcmd = "arecord -t raw -c 2 -r 2000 -f S16_LE - 2>/dev/null"
@@ -144,34 +136,23 @@ def predict (scalers, classifiers, scores) :
     
     count = 0
     p = [0] * Classifier.NUM_OF_LABELS
-    while t<50000000 :
+    while True :
         if len (buf) >= Classifier.WINDOW_SIZE * 4 :
             data1, data2 = getdata (buf[-Classifier.WINDOW_SIZE * 4:])
             buf = buf[-(Classifier.WINDOW_SIZE - 50) * 4:]
 
-# TODO
-            data2 = data1
-
-            X = extract_feature(data1, data2)[:500]
-            tmpp.append(X)
+            X = extract_feature(data1, data2)
             #tp = classifiers.predict([X])[0]
             tp = Classifier.multi_classification([X], scalers, classifiers, scores)[0]
-            print tp
 
             p[tp] += 1
             count += 1
-# TODO
-            if count >= 10 :
+            if count >= 5 :
                 maj = p.index (max (p))
                 count = 0
                 p = [0] * Classifier.NUM_OF_LABELS
                 print (maj)
                 sys.stdout.flush ()
-        t+=1
-    for i in tmpp:
-        plt.plot(i)
-        plt.show()
-    print tmpp[0]
 
     
     
