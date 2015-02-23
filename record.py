@@ -11,15 +11,11 @@ import time
 import threading
 import struct
 
-import Classifier 
+import Classifier
 from sklearn.externals import joblib
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
 
-import code
-
-#scaler1 = StandardScaler()
-#scaler2 = StandardScaler()
 buf = ""
 
 class readdataThread (threading.Thread) :
@@ -33,10 +29,9 @@ class readdataThread (threading.Thread) :
             buf += self.FILE.read (50 * 4)
 
 def extract_feature (data1, data2):
-    return np.concatenate(( 
-            (np.absolute(np.fft.fft(data1))) , 
+    return np.concatenate((
+            (np.absolute(np.fft.fft(data1))) ,
             (np.absolute(np.fft.fft(data2))) ) ).tolist()
-    
 
 def getdata (raw) :
     data1 = []
@@ -51,7 +46,6 @@ def getdata (raw) :
             data2.append (float(n))
             m = 1
     return data1, data2
-
 
 def record () :
     labels = range(Classifier.NUM_OF_LABELS-1, -1, -1) * 15
@@ -82,6 +76,7 @@ def record () :
 
         rawdata1.append(data1)
         rawdata2.append(data2)
+    f.close()
 
     f = open ("rawdata", "w")
     f.write (json.dumps (zip(labels, rawdata1, rawdata2)))
@@ -109,7 +104,7 @@ def train(rawdata1, rawdata2, y):
                         x1[i: i+Classifier.WINDOW_SIZE],
                         x2[i: i+Classifier.WINDOW_SIZE]) )
         #    X.append(x1[i: i+Classifier.WINDOW_SIZE])
-            # X.append( np.concatenate(( 
+            # X.append( np.concatenate((
             #         np.absolute(np.fft.fft(x1[i: i+Classifier.WINDOW_SIZE])) , 
             #         np.absolute(np.fft.fft(x2[i: i+Classifier.WINDOW_SIZE])) ) ).tolist())
             y_2.append( yi )
@@ -133,7 +128,7 @@ def predict (scalers, classifiers, scores) :
     proc = subprocess.Popen (shcmd, stdout = subprocess.PIPE, shell = True)
     read_thread = readdataThread (proc.stdout)
     read_thread.start ()
-    
+
     count = 0
     p = [0] * Classifier.NUM_OF_LABELS
     while True :
@@ -154,8 +149,6 @@ def predict (scalers, classifiers, scores) :
                 print (maj)
                 sys.stdout.flush ()
 
-    
-    
     read_thread.join ()
 
 
