@@ -1,9 +1,7 @@
 #! /usr/bin/env python
-import fcntl
 import json
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import random
 import subprocess
 import sys
@@ -68,11 +66,6 @@ def record () :
             f.read (2000 * 4)
             continue
         data1, data2 = getdata (f.read (2000 * 4))
-        # plt.subplot(2,1,1)
-        # plt.plot(data1)
-        # plt.subplot(2,1,2)
-        # plt.plot(data2)
-        # plt.show()
 
         rawdata1.append(data1)
         rawdata2.append(data2)
@@ -103,18 +96,9 @@ def train(rawdata1, rawdata2, y):
             X.append( extract_feature(
                         x1[i: i+Classifier.WINDOW_SIZE],
                         x2[i: i+Classifier.WINDOW_SIZE]) )
-        #    X.append(x1[i: i+Classifier.WINDOW_SIZE])
-            # X.append( np.concatenate((
-            #         np.absolute(np.fft.fft(x1[i: i+Classifier.WINDOW_SIZE])) , 
-            #         np.absolute(np.fft.fft(x2[i: i+Classifier.WINDOW_SIZE])) ) ).tolist())
             y_2.append( yi )
     y = y_2
     scalers, classifiers, scores = Classifier.gen_model(X, y, verbose=False)
-    """
-    scalers = []
-    classifiers = KNeighborsClassifier(n_neighbors=1).fit(X, y)
-    scores = []
-    """
     sys.stderr.write ("finish training\n")
     return scalers, classifiers, scores
 
@@ -137,7 +121,6 @@ def predict (scalers, classifiers, scores) :
             buf = buf[-(Classifier.WINDOW_SIZE - 50) * 4:]
 
             X = extract_feature(data1, data2)
-            #tp = classifiers.predict([X])[0]
             tp = Classifier.multi_classification([X], scalers, classifiers, scores)[0]
 
             p[tp] += 1
@@ -168,10 +151,6 @@ def main () :
         sys.stderr.write ("Wrong arguments\n")
         exit (1)
     scalers, classifiers, scores = train (rawx1, rawx2, y)
-    """
-    for i, j in zip(rawx1[:-1], rawx2[:-1]):
-        print Classifier.multi_classification(extract_feature(i[500:1000], j[500:1000])[:500], scalers, classifiers, scores)
-    """
     predict (scalers, classifiers, scores)
 
 if __name__ == "__main__" :
