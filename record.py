@@ -1,18 +1,18 @@
 #! /usr/bin/env python
+from __future__ import print_function
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import random
+import struct
 import subprocess
 import sys
-import time
+import tempfile
 import threading
-import struct
+import time
 
 import Classifier
-from sklearn.externals import joblib
-from sklearn.preprocessing import StandardScaler
-from sklearn.neighbors import KNeighborsClassifier
 
 buf = ""
 
@@ -45,7 +45,7 @@ def getdata (raw) :
             m = 1
     return data1, data2
 
-def record () :
+def record (data_file, output) :
     labels = range(Classifier.NUM_OF_LABELS-1, -1, -1) * 15
     # random.shuffle(labels)
     datas = []
@@ -53,14 +53,16 @@ def record () :
     rawdata2 = []
 
     record_time = len (labels)
-    shcmd = "arecord -c 2 -d %d -t raw -r 2000 -f S16_LE - 2>/dev/null > tmppp" % (record_time + 1)
+    tmp_fd, tmp_file = tempfile.mkstemp()
+    shcmd = "arecord -c 2 -d {} -t raw -r 2000 -f S16_LE - 2>/dev/null >{}"\
+        .format(record_time + 1, tmp_file)
     proc = subprocess.Popen (shcmd , stdout = subprocess.PIPE, shell = True)
     for i in range (-1, record_time) :
         if i > -1 :
-            print (labels[i])
+            output (labels[i])
         time.sleep (1)
 
-    f = open ('tmppp', 'r')
+    f = os.fdopen (tmp_fd)
     for i in range (-1, record_time) :
         if i == -1 :
             f.read (2000 * 4)
@@ -70,23 +72,24 @@ def record () :
         rawdata1.append(data1)
         rawdata2.append(data2)
     f.close()
+    os.unlink(tmp_file)
 
-    f = open ("rawdata", "w")
+    f = open (data_file, "w")
     f.write (json.dumps (zip(labels, rawdata1, rawdata2)))
     f.close ()
 
     return rawdata1, rawdata2, labels
 
 
-def readdata():
-    with open("rawdata", "r") as f:
+def readdata(data_file):
+    with open(data_file, "r") as f:
         y, X1, X2 = zip(*json.loads(f.readline()))
     Classifier.NUM_OF_LABELS = len (set (y))
     return X1, X2, y
 
 
-def train(rawdata1, rawdata2, y):
-    sys.stderr.write ("start training\n")
+def train(rawdata1, rawdata2, y, info):
+    info ("start training")
     X = []
     X1 = rawdata1
     X2 = rawdata2
@@ -99,18 +102,19 @@ def train(rawdata1, rawdata2, y):
             y_2.append( yi )
     y = y_2
     scalers, classifiers, scores = Classifier.gen_model(X, y, verbose=False)
-    sys.stderr.write ("finish training\n")
+    info ("finish training")
     return scalers, classifiers, scores
 
 
-def predict (scalers, classifiers, scores) :
+def predict (scalers, classifiers, scores, info, output) :
     global buf
 
-    sys.stderr.write ("start predict\n")
+    info ("start predict")
 
     shcmd = "arecord -t raw -c 2 -r 2000 -f S16_LE - 2>/dev/null"
     proc = subprocess.Popen (shcmd, stdout = subprocess.PIPE, shell = True)
     read_thread = readdataThread (proc.stdout)
+    read_thread.daemon = True
     read_thread.start ()
 
     count = 0
@@ -129,11 +133,14 @@ def predict (scalers, classifiers, scores) :
                 maj = p.index (max (p))
                 count = 0
                 p = [0] * Classifier.NUM_OF_LABELS
-                print (maj)
+                output (maj)
                 sys.stdout.flush ()
 
     read_thread.join ()
 
+
+def message (msg):
+    sys.stderr.write(msg + '\n')
 
 def main () :
     argv = sys.argv
@@ -142,16 +149,16 @@ def main () :
         sys.stderr.write ("Usage: %s {new|read}\n" % (argv[0]))
         exit (1)
 
+    Classifier.NUM_OF_LABELS = 2
     if argv[1] == "new" :
-        Classifier.NUM_OF_LABELS = 2
-        rawx1, rawx2, y = record()
+        rawx1, rawx2, y = record('rawdata', print)
     elif argv[1] == "read" :
-        rawx1, rawx2, y = readdata()
+        rawx1, rawx2, y = readdata('rawdata')
     else :
         sys.stderr.write ("Wrong arguments\n")
         exit (1)
-    scalers, classifiers, scores = train (rawx1, rawx2, y)
-    predict (scalers, classifiers, scores)
+    scalers, classifiers, scores = train (rawx1, rawx2, y, message)
+    predict (scalers, classifiers, scores, message, print)
 
 if __name__ == "__main__" :
     main ()
