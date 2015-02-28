@@ -33,6 +33,8 @@ function.add_button('New', FUNCTION_NEW)
 function.add_button('Read', FUNCTION_READ)
 function.show_all()
 f = function.run()
+if f == Gtk.ResponseType.DELETE_EVENT:
+	exit(0)
 function.destroy()
 
 for finger_file in finger_file_map:
